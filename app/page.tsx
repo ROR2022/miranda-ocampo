@@ -8,7 +8,7 @@ const miryImages = () => {
   const basicPath = "/images/miry";
   const extension = ".jpg";
   const minNumber = 1;
-  const maxNumber = 45;
+  const maxNumber = 49;
 
   for (let i = minNumber; i <= maxNumber; i++) {
     const imageNumber = i.toString().padStart(2, "0");
