@@ -97,7 +97,8 @@ const page = () => {
             autoPlay
             loop
             muted
-            controls={false}
+            playsInline
+            disablePictureInPicture
             onError={handleErrorFondo}
             onLoad={handleLoadFondo}
             style={{
@@ -105,10 +106,24 @@ const page = () => {
               height: "100vh",
               objectFit: "cover",
               position: "absolute",
-              zIndex: 500
+              top: 0,
+              left: 0,
+              zIndex: 0,
+              pointerEvents: "none"
             }}
           />
-          <BackgroundCarrousel images={miryImages()} />
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100vh",
+              zIndex: 10
+            }}
+          >
+            <BackgroundCarrousel images={miryImages()} />
+          </div>
         </div>
         <div
           style={{
@@ -122,12 +137,16 @@ const page = () => {
             src="/video/miranda.mp4"
             autoPlay
             loop
+            muted
+            playsInline
+            disablePictureInPicture
             onError={handleError}
             onLoad={handleLoad}
             style={{
               width: "100%",
               height: "100vh",
               objectFit: "cover",
+              pointerEvents: "none"
             }}
           />
         </div>
