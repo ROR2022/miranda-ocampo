@@ -137,7 +137,7 @@ const page = () => {
             src="/video/miranda.mp4"
             autoPlay
             loop
-            muted
+            
             playsInline
             disablePictureInPicture
             onError={handleError}
