@@ -92,6 +92,10 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
   // 📱 Estados adicionales para UI
   const [downloadStatus, setDownloadStatus] = useState<string>('');
   const [activeColorPreset, setActiveColorPreset] = useState<number>(0);
+  const [tempDarkColor, setTempDarkColor] = useState<string>(state.qrOptions.darkColor);
+  const [tempLightColor, setTempLightColor] = useState<string>(state.qrOptions.lightColor);
+  const [darkColorError, setDarkColorError] = useState<boolean>(false);
+  const [lightColorError, setLightColorError] = useState<boolean>(false);
 
   // 🔄 Función para actualizar estado de forma segura
   const updateState = useCallback((updates: Partial<CreateQRState>) => {
@@ -236,10 +240,83 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
         darkColor: preset.darkColor,
         lightColor: preset.lightColor
       });
+      setTempDarkColor(preset.darkColor);
+      setTempLightColor(preset.lightColor);
+      setDarkColorError(false);
+      setLightColorError(false);
       setActiveColorPreset(presetIndex);
     }
   }, [updateQROptions]);
 
+  // 🎨 Manejar cambio de color oscuro (input text)
+  const handleDarkColorChange = useCallback((value: string) => {
+    setTempDarkColor(value);
+    setDarkColorError(false);
+  }, []);
+
+  // 🎨 Validar y aplicar color oscuro
+  const handleDarkColorBlur = useCallback(() => {
+    if (validateHexColor(tempDarkColor)) {
+      updateQROptions({ darkColor: tempDarkColor });
+      setDarkColorError(false);
+    } else {
+      setDarkColorError(true);
+      // Revertir al valor válido anterior
+      setTempDarkColor(state.qrOptions.darkColor);
+    }
+  }, [tempDarkColor, state.qrOptions.darkColor, updateQROptions]);
+
+  // 🎨 Manejar cambio de color claro (input text)
+  const handleLightColorChange = useCallback((value: string) => {
+    setTempLightColor(value);
+    setLightColorError(false);
+  }, []);
+
+  // 🎨 Validar y aplicar color claro
+  const handleLightColorBlur = useCallback(() => {
+    if (validateHexColor(tempLightColor)) {
+      updateQROptions({ lightColor: tempLightColor });
+      setLightColorError(false);
+    } else {
+      setLightColorError(true);
+      // Revertir al valor válido anterior
+      setTempLightColor(state.qrOptions.lightColor);
+    }
+  }, [tempLightColor, state.qrOptions.lightColor, updateQROptions]);
+
+  // 🖼️ Manejar carga de imagen de logo
+  const handleLogoUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      updateState({ error: 'Por favor selecciona una imagen válida' });
+      return;
+    }
+
+    // Validar tamaño (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      updateState({ error: 'La imagen es demasiado grande (máximo 5MB)' });
+      return;
+    }
+
+    // Convertir a base64
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      updateQROptions({ logoUrl: result });
+    };
+    reader.onerror = () => {
+      updateState({ error: 'Error al cargar la imagen' });
+    };
+    reader.readAsDataURL(file);
+  }, [updateQROptions, updateState]);
+
+  // 🗑️ Remover logo
+  const handleRemoveLogo = useCallback(() => {
+    updateQROptions({ logoUrl: null });
+  }, [updateQROptions]);
   // 🎯 Generación automática de QR al cambiar opciones
   useEffect(() => {
     console.log('🎯 [QR Generation] useEffect triggered:', {
@@ -331,9 +408,74 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
     }
 
     try {
-      const fileName = generateQRFileName(state.url, 'png');
-      downloadQRAsPNG(qrDataURL, fileName);
-      setDownloadStatus(createDownloadMessage('png', fileName));
+      // Si hay logo, necesitamos crear un canvas combinado
+      if (state.qrOptions.logoUrl) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('No se pudo crear el contexto del canvas');
+
+        const size = state.qrOptions.size;
+        canvas.width = size;
+        canvas.height = size;
+
+        // Cargar imagen del QR
+        const qrImage = new window.Image();
+        qrImage.crossOrigin = 'anonymous';
+        
+        await new Promise((resolve, reject) => {
+          qrImage.onload = resolve;
+          qrImage.onerror = reject;
+          qrImage.src = qrDataURL;
+        });
+
+        // Dibujar QR
+        ctx.drawImage(qrImage, 0, 0, size, size);
+
+        // Dibujar logo si existe
+        const logoSize = (size * (state.qrOptions.logoSize || 20)) / 100;
+        const logoPosition = (size - logoSize) / 2;
+        const padding = 8;
+
+        // Fondo del logo
+        ctx.fillStyle = state.qrOptions.logoBackgroundColor || '#FFFFFF';
+        ctx.beginPath();
+        ctx.roundRect(logoPosition, logoPosition, logoSize, logoSize, 8);
+        ctx.fill();
+
+        // Sombra del logo
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
+
+        // Cargar y dibujar logo
+        const logoImage = new window.Image();
+        logoImage.crossOrigin = 'anonymous';
+        
+        await new Promise((resolve, reject) => {
+          logoImage.onload = resolve;
+          logoImage.onerror = reject;
+          logoImage.src = state.qrOptions.logoUrl!;
+        });
+
+        ctx.drawImage(
+          logoImage,
+          logoPosition + padding,
+          logoPosition + padding,
+          logoSize - padding * 2,
+          logoSize - padding * 2
+        );
+
+        // Descargar desde canvas
+        const finalDataURL = canvas.toDataURL('image/png');
+        const fileName = generateQRFileName(state.url, 'png');
+        downloadQRAsPNG(finalDataURL, fileName);
+        setDownloadStatus(createDownloadMessage('png', fileName));
+      } else {
+        // Sin logo, descarga normal
+        const fileName = generateQRFileName(state.url, 'png');
+        downloadQRAsPNG(qrDataURL, fileName);
+        setDownloadStatus(createDownloadMessage('png', fileName));
+      }
       
       // Limpiar mensaje después de 3 segundos
       setTimeout(() => setDownloadStatus(''), 3000);
@@ -341,7 +483,7 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
       const errorMessage = handleDownloadError(error as Error, 'png');
       setDownloadStatus(errorMessage);
     }
-  }, [qrDataURL, state.url]);
+  }, [qrDataURL, state.url, state.qrOptions]);
 
   // 💾 Función de descarga JPG
   const handleDownloadJPG = useCallback(async () => {
@@ -356,9 +498,74 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
     }
 
     try {
-      const fileName = generateQRFileName(state.url, 'jpg');
-      await downloadQRAsJPG(qrDataURL, fileName);
-      setDownloadStatus(createDownloadMessage('jpg', fileName));
+      // Si hay logo, necesitamos crear un canvas combinado
+      if (state.qrOptions.logoUrl) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('No se pudo crear el contexto del canvas');
+
+        const size = state.qrOptions.size;
+        canvas.width = size;
+        canvas.height = size;
+
+        // Cargar imagen del QR
+        const qrImage = new window.Image();
+        qrImage.crossOrigin = 'anonymous';
+        
+        await new Promise((resolve, reject) => {
+          qrImage.onload = resolve;
+          qrImage.onerror = reject;
+          qrImage.src = qrDataURL;
+        });
+
+        // Dibujar QR
+        ctx.drawImage(qrImage, 0, 0, size, size);
+
+        // Dibujar logo si existe
+        const logoSize = (size * (state.qrOptions.logoSize || 20)) / 100;
+        const logoPosition = (size - logoSize) / 2;
+        const padding = 8;
+
+        // Fondo del logo
+        ctx.fillStyle = state.qrOptions.logoBackgroundColor || '#FFFFFF';
+        ctx.beginPath();
+        ctx.roundRect(logoPosition, logoPosition, logoSize, logoSize, 8);
+        ctx.fill();
+
+        // Sombra del logo
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
+
+        // Cargar y dibujar logo
+        const logoImage = new window.Image();
+        logoImage.crossOrigin = 'anonymous';
+        
+        await new Promise((resolve, reject) => {
+          logoImage.onload = resolve;
+          logoImage.onerror = reject;
+          logoImage.src = state.qrOptions.logoUrl!;
+        });
+
+        ctx.drawImage(
+          logoImage,
+          logoPosition + padding,
+          logoPosition + padding,
+          logoSize - padding * 2,
+          logoSize - padding * 2
+        );
+
+        // Descargar desde canvas como JPG
+        const finalDataURL = canvas.toDataURL('image/jpeg', 0.95);
+        const fileName = generateQRFileName(state.url, 'jpg');
+        await downloadQRAsJPG(finalDataURL, fileName);
+        setDownloadStatus(createDownloadMessage('jpg', fileName));
+      } else {
+        // Sin logo, descarga normal
+        const fileName = generateQRFileName(state.url, 'jpg');
+        await downloadQRAsJPG(qrDataURL, fileName);
+        setDownloadStatus(createDownloadMessage('jpg', fileName));
+      }
       
       // Limpiar mensaje después de 3 segundos
       setTimeout(() => setDownloadStatus(''), 3000);
@@ -366,7 +573,7 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
       const errorMessage = handleDownloadError(error as Error, 'jpg');
       setDownloadStatus(errorMessage);
     }
-  }, [qrDataURL, state.url]);
+  }, [qrDataURL, state.url, state.qrOptions]);
 
   // 🔄 Función de reset
   const handleReset = useCallback(() => {
@@ -516,20 +723,35 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
                   <input
                     type="color"
                     value={state.qrOptions.darkColor}
-                    onChange={(e) => updateQROptions({ darkColor: e.target.value })}
+                    onChange={(e) => {
+                      updateQROptions({ darkColor: e.target.value });
+                      setTempDarkColor(e.target.value);
+                      setDarkColorError(false);
+                    }}
                     className={styles.colorPicker}
                   />
                   <input
                     type="text"
-                    value={state.qrOptions.darkColor}
-                    onChange={(e) => {
-                      if (validateHexColor(e.target.value)) {
-                        updateQROptions({ darkColor: e.target.value });
+                    value={tempDarkColor}
+                    onChange={(e) => handleDarkColorChange(e.target.value)}
+                    onBlur={handleDarkColorBlur}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleDarkColorBlur();
                       }
                     }}
                     placeholder="#000000"
                     className={styles.colorInput}
+                    style={{
+                      borderColor: darkColorError ? '#ef4444' : undefined,
+                      outline: darkColorError ? '2px solid #fecaca' : undefined
+                    }}
                   />
+                  {darkColorError && (
+                    <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                      ❌ Color inválido (formato: #RRGGBB)
+                    </div>
+                  )}
                 </div>
               </div>
               <div className={styles.colorGroup}>
@@ -540,20 +762,35 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
                   <input
                     type="color"
                     value={state.qrOptions.lightColor}
-                    onChange={(e) => updateQROptions({ lightColor: e.target.value })}
+                    onChange={(e) => {
+                      updateQROptions({ lightColor: e.target.value });
+                      setTempLightColor(e.target.value);
+                      setLightColorError(false);
+                    }}
                     className={styles.colorPicker}
                   />
                   <input
                     type="text"
-                    value={state.qrOptions.lightColor}
-                    onChange={(e) => {
-                      if (validateHexColor(e.target.value)) {
-                        updateQROptions({ lightColor: e.target.value });
+                    value={tempLightColor}
+                    onChange={(e) => handleLightColorChange(e.target.value)}
+                    onBlur={handleLightColorBlur}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleLightColorBlur();
                       }
                     }}
                     placeholder="#FFFFFF"
                     className={styles.colorInput}
+                    style={{
+                      borderColor: lightColorError ? '#ef4444' : undefined,
+                      outline: lightColorError ? '2px solid #fecaca' : undefined
+                    }}
                   />
+                  {lightColorError && (
+                    <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                      ❌ Color inválido (formato: #RRGGBB)
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -619,6 +856,137 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
               </div>
             </div>
           </div>
+
+          {/* 🖼️ Sección de Logo */}
+          <div className={styles.optionGroup}>
+            <label className={styles.optionLabel}>🖼️ Logo en el centro (opcional)</label>
+            
+            {!state.qrOptions.logoUrl ? (
+              <div style={{ marginTop: '0.5rem' }}>
+                <label 
+                  htmlFor="logo-upload"
+                  style={{
+                    display: 'inline-block',
+                    padding: '0.75rem 1.5rem',
+                    background: '#3b82f6',
+                    color: 'white',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    fontWeight: '600',
+                    transition: 'background 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+                >
+                  📤 Subir imagen de logo
+                </label>
+                <input
+                  id="logo-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                  Formatos: JPG, PNG, SVG • Tamaño máximo: 5MB
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: '0.5rem' }}>
+                {/* Preview del logo */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  padding: '1rem',
+                  background: '#f9fafb',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb'
+                }}>
+                  <Image
+                    src={state.qrOptions.logoUrl}
+                    alt="Logo preview"
+                    width={60}
+                    height={60}
+                    style={{
+                      objectFit: 'contain',
+                      borderRadius: '4px',
+                      background: state.qrOptions.logoBackgroundColor
+                    }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#374151' }}>
+                      ✅ Logo cargado
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                      Se mostrará en el centro del QR
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: '600'
+                    }}
+                  >
+                    🗑️ Quitar
+                  </button>
+                </div>
+
+                {/* Control de tamaño del logo */}
+                <div className={styles.rangeContainer} style={{ marginTop: '1rem' }}>
+                  <label htmlFor="logo-size-range" style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    Tamaño del logo
+                  </label>
+                  <input
+                    id="logo-size-range"
+                    type="range"
+                    min="10"
+                    max="40"
+                    step="5"
+                    value={state.qrOptions.logoSize || 20}
+                    onChange={(e) => updateQROptions({ logoSize: parseInt(e.target.value) })}
+                    className={styles.rangeInput}
+                  />
+                  <div className={styles.rangeValue}>
+                    {state.qrOptions.logoSize || 20}%
+                  </div>
+                </div>
+
+                {/* Control de fondo del logo */}
+                <div style={{ marginTop: '1rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#6b7280', display: 'block', marginBottom: '0.5rem' }}>
+                    Fondo del logo
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={state.qrOptions.logoBackgroundColor || '#FFFFFF'}
+                      onChange={(e) => updateQROptions({ logoBackgroundColor: e.target.value })}
+                      style={{
+                        width: '60px',
+                        height: '40px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        cursor: 'pointer'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                      {state.qrOptions.logoBackgroundColor || '#FFFFFF'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -632,15 +1000,46 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
             {qrDataURL ? (
               <>
               <h2 className='text-3xl font-bold'>Invitado: {name}</h2>
-                <Image
-                  src={qrDataURL}
-                  alt="Código QR generado"
-                  width={state.qrOptions.size}
-                  height={state.qrOptions.size}
-                  className={styles.qrPreview}
-                />
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <Image
+                    src={qrDataURL}
+                    alt="Código QR generado"
+                    width={state.qrOptions.size}
+                    height={state.qrOptions.size}
+                    className={styles.qrPreview}
+                  />
+                  {/* Logo superpuesto sobre el QR */}
+                  {state.qrOptions.logoUrl && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: `${state.qrOptions.logoSize}%`,
+                        height: `${state.qrOptions.logoSize}%`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: state.qrOptions.logoBackgroundColor,
+                        borderRadius: '8px',
+                        padding: '8px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }}
+                    >
+                      <Image
+                        src={state.qrOptions.logoUrl}
+                        alt="Logo"
+                        width={Math.floor(state.qrOptions.size * ((state.qrOptions.logoSize || 20) / 100) - 16)}
+                        height={Math.floor(state.qrOptions.size * ((state.qrOptions.logoSize || 20) / 100) - 16)}
+                        style={{ objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+                </div>
                 <div className={`${styles.previewStatus} ${styles.ready}`}>
                   ✅ QR listo para descargar ({state.qrOptions.size}×{state.qrOptions.size}px)
+                  {state.qrOptions.logoUrl && ' con logo'}
                 </div>
               </>
             ) : state.isGenerating ? (

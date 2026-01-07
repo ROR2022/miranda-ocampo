@@ -5,6 +5,9 @@ export interface QROptions {
   lightColor: string;
   errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
   margin: number;
+  logoUrl?: string | null;
+  logoSize?: number;
+  logoBackgroundColor?: string;
 }
 
 export interface CreateQRState {
@@ -62,5 +65,8 @@ export const DEFAULT_QR_OPTIONS: QROptions = {
   darkColor: "#000000",
   lightColor: "#FFFFFF",
   errorCorrectionLevel: 'M',
-  margin: 1
+  margin: 1,
+  logoUrl: null,
+  logoSize: 20,
+  logoBackgroundColor: '#FFFFFF'
 };
