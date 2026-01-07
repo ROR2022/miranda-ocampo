@@ -96,6 +96,8 @@ const page = () => {
             src="/video/fondo1.mp4"
             autoPlay
             loop
+            muted
+            controls={false}
             onError={handleErrorFondo}
             onLoad={handleLoadFondo}
             style={{

@@ -306,12 +306,21 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
     reader.onload = (e) => {
       const result = e.target?.result as string;
       updateQROptions({ logoUrl: result });
+      
+      // Recomendar corrección de errores alta cuando hay logo
+      if (state.qrOptions.errorCorrectionLevel === 'L' || state.qrOptions.errorCorrectionLevel === 'M') {
+        console.warn('⚠️ [Logo] Se recomienda usar corrección de errores "Alta (Q)" o "Máxima (H)" con logo');
+        updateQROptions({ 
+          logoUrl: result,
+          errorCorrectionLevel: 'H' // Cambiar automáticamente a máxima
+        });
+      }
     };
     reader.onerror = () => {
       updateState({ error: 'Error al cargar la imagen' });
     };
     reader.readAsDataURL(file);
-  }, [updateQROptions, updateState]);
+  }, [updateQROptions, updateState, state.qrOptions.errorCorrectionLevel]);
 
   // 🗑️ Remover logo
   const handleRemoveLogo = useCallback(() => {
@@ -835,6 +844,18 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
                     </option>
                   ))}
                 </select>
+                {state.qrOptions.logoUrl && (state.qrOptions.errorCorrectionLevel === 'L' || state.qrOptions.errorCorrectionLevel === 'M') && (
+                  <div style={{ 
+                    marginTop: '0.5rem', 
+                    fontSize: '0.75rem', 
+                    color: '#ef4444',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    ⚠️ Se recomienda "Alto (Q)" o "Máximo (H)" cuando usas logo
+                  </div>
+                )}
               </div>
               <div className={styles.rangeContainer}>
                 <label htmlFor="margin-range" style={{ fontSize: '0.85rem', color: '#6b7280' }}>
@@ -959,6 +980,18 @@ const CreateQR: React.FC<CreateQRProps> = ({urlLink, name}) => {
                   <div className={styles.rangeValue}>
                     {state.qrOptions.logoSize || 20}%
                   </div>
+                  {(state.qrOptions.logoSize || 20) > 30 && (
+                    <div style={{ 
+                      marginTop: '0.5rem', 
+                      fontSize: '0.75rem', 
+                      color: '#f59e0b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      ⚠️ Un logo muy grande puede dificultar el escaneo del QR
+                    </div>
+                  )}
                 </div>
 
                 {/* Control de fondo del logo */}
