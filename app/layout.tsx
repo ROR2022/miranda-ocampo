@@ -20,7 +20,7 @@ const { event } = quinceMainData;
 
 export const metadata: Metadata = {
   title: `${event.celebrant}`,
-  description: `Acompáñame a celebrar el ${event.date.full}.`,
+  description: `Video-Galeria.`,
   generator: "",
 }
 
